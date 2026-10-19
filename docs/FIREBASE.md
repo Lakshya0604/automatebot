@@ -6,4 +6,4 @@
   "rooms": { "$room": { ".read": "$room.length >= 24", ".write": "$room.length >= 24" } } } }
 ```
 Anyone who knows the long random room code can send commands, nobody can list rooms.
-3. Put the database URL in the app (Website control) and tap "Open web remote".
+3. Database URL used by Automatebot: https://lakshya-studio-3d-default-rtdb.firebaseio.com (in the Lakshya Digital Studio Firebase project). Put it in the app (Website control) and tap "Open web remote".

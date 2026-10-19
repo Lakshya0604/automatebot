@@ -19,6 +19,7 @@ class RemoteRelay(
     @Volatile private var running = false
     private var thread: Thread? = null
     private var lastTs = -1L
+    @Volatile private var initialized = false
 
     companion object {
         /** Publish the device registry ({name:[buttons]}) so the website can show and use it. */
@@ -65,6 +66,7 @@ class RemoteRelay(
     }
 
     private fun listen() {
+        initialized = false
         val c = URL("${dbUrl.trimEnd('/')}/rooms/$room/cmd.json").openConnection() as HttpURLConnection
         c.setRequestProperty("Accept", "text/event-stream")
         c.connectTimeout = 10000
@@ -77,11 +79,11 @@ class RemoteRelay(
                 else if (line.startsWith("data:") && (event == "put" || event == "patch")) {
                     try {
                         val d = JSONObject(line.substring(5).trim()).opt("data")
-                        val o = d as? JSONObject ?: continue
-                        val ts = o.optLong("ts", 0)
-                        val text = o.optString("text", "")
-                        if (lastTs == -1L) { lastTs = ts }          // first event = old value, ignore
-                        else if (ts != lastTs && text.isNotBlank()) { lastTs = ts; onCommand(text) }
+                        val o = d as? JSONObject
+                        val ts = o?.optLong("ts", 0) ?: 0L
+                        val text = o?.optString("text", "") ?: ""
+                        if (!initialized) { initialized = true; lastTs = ts }   // first event = old value, ignore
+                        else if (o != null && ts != lastTs && text.isNotBlank()) { lastTs = ts; onCommand(text) }
                     } catch (_: Exception) {}
                 }
             }

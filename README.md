@@ -100,7 +100,7 @@ Vosk: Apache-2.0. Vosk models: Apache-2.0.
 - CommandParser understands Devanagari and Roman Hindi, e.g. "volume badhao", "टीवी बंद करो", "youtube kholo".
 - Optional: paste a free Gemini API key (aistudio.google.com) in the app. Anything the parser does not recognise is sent to Gemini, which can only choose from the fixed list of commands.
 
-## Generic IR devices, web remote, camera (v0.3 work in progress)
+## Generic IR devices, web remote, camera (v0.3.0)
 
 - Learn any IR remote: ESP8266 + IR receiver (TSOP1738 / VS1838B on D5) + IR LED. In the app enter device name and button name, tap "Learn button", press the button on the real remote. Then say "<device> <button>", e.g. "ac on", "fan speed up", "set top box channel 25" (digits are pressed one by one if the device has 0-9 buttons).
 - Web remote: https://lakshya0604.github.io/automatebot/ . Needs a free Firebase Realtime Database as the relay (see docs/FIREBASE.md).

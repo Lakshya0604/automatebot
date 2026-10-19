@@ -52,7 +52,7 @@ class MainActivity : Activity() {
         portEdit.setText(prefs.getString("port", "5555"))
         wakeEdit.setText(prefs.getString("wake_v2", "bot one"))
         geminiEdit.setText(prefs.getString("gemini", ""))
-        dbEdit.setText(prefs.getString("db", ""))
+        dbEdit.setText(prefs.getString("db", "https://lakshya-studio-3d-default-rtdb.firebaseio.com"))
         var room = prefs.getString("room", "") ?: ""
         if (room.length < 16) {
             val b = ByteArray(16); java.security.SecureRandom().nextBytes(b)
