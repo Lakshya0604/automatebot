@@ -21,6 +21,7 @@ class MainActivity : Activity() {
     private lateinit var portEdit: EditText
     private lateinit var wakeEdit: EditText
     private lateinit var esp32Edit: EditText
+    private lateinit var nodeEdit: EditText
     private lateinit var geminiEdit: EditText
     private lateinit var dbEdit: EditText
     private lateinit var roomEdit: EditText
@@ -41,6 +42,7 @@ class MainActivity : Activity() {
         portEdit = findViewById(R.id.portEdit)
         wakeEdit = findViewById(R.id.wakeEdit)
         esp32Edit = findViewById(R.id.esp32Edit)
+        nodeEdit = findViewById(R.id.nodeEdit)
         geminiEdit = findViewById(R.id.geminiEdit)
         dbEdit = findViewById(R.id.dbEdit)
         roomEdit = findViewById(R.id.roomEdit)
@@ -61,6 +63,8 @@ class MainActivity : Activity() {
         }
         roomEdit.setText(room)
         esp32Edit.setText(prefs.getString("esp32", ""))
+        nodeEdit.setText(prefs.getString("node", ""))
+        updateNodeButton()
 
         findViewById<Button>(R.id.connectBtn).setOnClickListener {
             savePrefs()
@@ -89,7 +93,7 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.testBtn).setOnClickListener {
             savePrefs()
             val d = devEdit.text.toString().trim().lowercase(); val b = btnEdit.text.toString().trim().lowercase()
-            executor.execute { Logger.log(if (IrRouter(this).sendLearned(esp32(), d, listOf(b))) "Sent" else "Failed") }
+            executor.execute { Logger.log(if (IrRouter(this).sendLearned(esp32(), node(), d, listOf(b))) "Sent" else "Failed") }
         }
         findViewById<Button>(R.id.delBtn).setOnClickListener {
             val d = devEdit.text.toString().trim().lowercase(); val b = btnEdit.text.toString().trim().lowercase()
@@ -107,6 +111,22 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.homeBtn).setOnClickListener { quick("input keyevent 3") }
         findViewById<Button>(R.id.youtubeBtn).setOnClickListener {
             quick("monkey -p com.google.android.youtube.tv -c android.intent.category.LAUNCHER 1")
+        }
+        findViewById<Button>(R.id.nodeBtn).setOnClickListener {
+            if (IrNodeService.isRunning()) {
+                startService(Intent(this, IrNodeService::class.java).setAction(IrNodeService.ACTION_STOP))
+                Logger.log("IR node stopped")
+            } else {
+                Logger.log("Starting IR node on this phone (needs a phone with an IR blaster)...")
+                if (Build.VERSION.SDK_INT >= 33 &&
+                    checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 2)
+                }
+                val i = Intent(this, IrNodeService::class.java).setAction(IrNodeService.ACTION_START)
+                if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
+            }
+            statusView.postDelayed({ updateNodeButton() }, 800)
         }
         findViewById<Button>(R.id.startBtn).setOnClickListener {
             savePrefs()
@@ -162,6 +182,7 @@ class MainActivity : Activity() {
             .putExtra(WakeWordService.EXTRA_PORT, port())
             .putExtra(WakeWordService.EXTRA_WAKE, wake())
             .putExtra(WakeWordService.EXTRA_ESP32, esp32())
+            .putExtra(WakeWordService.EXTRA_NODE, node())
             .putExtra(WakeWordService.EXTRA_DB, dbEdit.text.toString().trim())
             .putExtra(WakeWordService.EXTRA_ROOM, roomEdit.text.toString().trim())
             .putExtra(WakeWordService.EXTRA_GEMINI, geminiEdit.text.toString().trim())
@@ -177,6 +198,7 @@ class MainActivity : Activity() {
             .putString("db", dbEdit.text.toString().trim())
             .putString("room", roomEdit.text.toString().trim())
             .putString("esp32", esp32())
+            .putString("node", node())
             .apply()
     }
 
@@ -184,4 +206,10 @@ class MainActivity : Activity() {
     private fun port() = portEdit.text.toString().trim().toIntOrNull() ?: 5555
     private fun wake() = wakeEdit.text.toString().trim().lowercase().ifEmpty { "bot one" }
     private fun esp32() = esp32Edit.text.toString().trim()
+    private fun node() = nodeEdit.text.toString().trim()
+
+    private fun updateNodeButton() {
+        findViewById<Button>(R.id.nodeBtn).text =
+            if (IrNodeService.isRunning()) "Stop IR node on this phone" else "Run IR node on this phone (has IR blaster)"
+    }
 }

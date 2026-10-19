@@ -70,6 +70,24 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:text="IR phone node (optional): IP of the OTHER phone that has an IR blaster" />
+
+        <EditText
+            android:id="@+id/nodeEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="e.g. 192.168.1.7 (shown on that phone's notification)"
+            android:inputType="text|textNoSuggestions" />
+
+        <Button
+            android:id="@+id/nodeBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Run IR node on this phone (has IR blaster)" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:text="Gemini API key (optional, free, helps with free-form speech)" />
 
         <EditText

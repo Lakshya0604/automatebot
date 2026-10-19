@@ -1,4 +1,4 @@
-# Automatebot - voice remote for Android TV (and IR devices later)
+# Automatebot - voice remote for Android TV and IR devices
 
 An Alexa-style Android app: say the wake word, the phone beeps, say a command,
 and your Android TV obeys - power, volume, channels, launching apps. The phone
@@ -20,10 +20,12 @@ voice -> phone mic -> Vosk (offline wake word + speech-to-text)
 - **TV control**: ADB over WiFi using
   [AdbLib](https://github.com/cgutman/AdbLib) (sources vendored in
   `app/src/main/java/com/cgutman/adblib`, BSD license - see `licenses/`).
-- **IR devices (stage 2)**: two backends, picked automatically -
+- **IR devices (stage 2)**: three backends, picked automatically -
   1. the phone's own IR blaster (ConsumerIrManager) if the phone has one -
      codes live in `IrCodes.kt`, NEC encoder built in
-  2. the ESP8266 (WeMos D1) over WiFi, firmware + protocol in `esp8266/` -
+  2. **a second phone with an IR blaster**, running Automatebot's IR node over
+     the house WiFi - same protocol as the ESP8266, no extra hardware at all
+  3. the ESP8266 (WeMos D1) over WiFi, firmware + protocol in `esp8266/` -
      works with the 1-ch relay you already own, no IR LED needed for
      relay on/off
   The app routes "AC on", "fan off" etc. to whichever backend is available.
@@ -68,6 +70,48 @@ voice -> phone mic -> Vosk (offline wake word + speech-to-text)
 4. Use the on-screen buttons (Power / Vol / Home / YouTube) to test the TV
    connection without voice.
 
+## Path 2: use a second phone's IR blaster (no hardware to buy)
+
+The Redmi 8A has no IR blaster. If another phone in the house has one
+(many Redmi Note / Mi / Poco phones do), that phone can fire IR for the Redmi:
+
+1. Install the same APK on BOTH phones. Both on the same WiFi.
+2. On the phone WITH IR: open the app, tap **"Run IR node on this phone"**.
+   A notification shows its address, e.g. `192.168.1.7:8765`.
+3. On the Redmi: enter that address in **"IR phone node"** (just the IP is
+   fine, the app adds the port). Done - "AC on", learned buttons, everything
+   IR now fires from the other phone's blaster. Keep that phone near the
+   devices, pointing at them, charger plugged in.
+
+The node speaks the same HTTP protocol as the ESP8266 firmware
+(`GET /ir?name=...`, `POST /send`), so one client serves both. A phone has
+no IR receiver, so *learning* new remote codes still needs the ESP8266 +
+VS1838B receiver.
+
+## What is tested (and what is not)
+
+Automated tests (`./gradlew testDebugUnitTest`, also run by GitHub Actions
+on every push):
+
+- **TV path**: the app's real ADB client connects over a real socket to a
+  fake TV adbd, completes both the RSA "Allow debugging?" handshake and the
+  no-auth mode, and the test asserts the exact `shell:input keyevent ...`
+  bytes arrive - see `AdbFakeTvTest.kt`.
+- **Phone-to-phone IR path**: the real node server and the real client talk
+  over a real socket; the test asserts named commands fire the NEC-encoded
+  pattern, learned raw codes round-trip byte-for-byte, unknown commands are
+  rejected and `/learn` is refused politely - see `IrNodeTest.kt`.
+- **Command parser**: Hindi / Hinglish / English phrases - see `ParserTest.kt`.
+- **ESP8266 firmware**: compile-verified by CI (esp8266 core 3.1.2 +
+  IRremoteESP8266 2.9.0 for the WeMos D1 mini).
+
+Not tested yet (needs the user's hardware):
+
+- A real TV's adbd quirks - the first real connect may still show small bugs;
+  the on-screen log shows exactly what the app is doing.
+- ConsumerIrManager actually firing on the node phone (no IR phone here).
+- Real IR range/aiming of the ESP8266 LED circuit.
+
 ## Honest limitations
 
 - **Not yet tested against a real TV.** The app compiles, and the ADB library
@@ -92,6 +136,15 @@ voice -> phone mic -> Vosk (offline wake word + speech-to-text)
 App code: MIT (see LICENSE). AdbLib: BSD (licenses/ADBLIB-LICENSE.txt).
 Vosk: Apache-2.0. Vosk models: Apache-2.0.
 
+
+## v0.4.0: phone-to-phone IR node + automated end-to-end tests
+
+- New: a second phone with an IR blaster can serve as the WiFi IR node
+  (`IrNodeServer` + `IrNodeService`, port 8765) - the Redmi 8A controls IR
+  devices through it. Same protocol as the ESP8266.
+- New: Robolectric end-to-end tests for the ADB/TV path (fake adbd, both
+  auth modes) and the IR node path; parser tests; GitHub Actions CI builds
+  the APK, runs the tests, compiles the firmware, and publishes releases.
 
 ## v0.2: Hindi / Hinglish / English
 

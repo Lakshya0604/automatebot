@@ -39,6 +39,7 @@ class WakeWordService : Service(), RecognitionListener {
         const val EXTRA_PORT = "port"
         const val EXTRA_WAKE = "wake"
         const val EXTRA_ESP32 = "esp32"
+        const val EXTRA_NODE = "node"
         const val EXTRA_GEMINI = "gemini"
         const val EXTRA_DB = "db"
         const val EXTRA_ROOM = "room"
@@ -60,6 +61,7 @@ class WakeWordService : Service(), RecognitionListener {
     private var host = ""
     private var port = 5555
     private var esp32Host = ""
+    private var nodeHost = ""
     private var wakePhrase = DEFAULT_WAKE
     private var geminiKey = ""
     private var relay: RemoteRelay? = null
@@ -112,6 +114,7 @@ class WakeWordService : Service(), RecognitionListener {
                 host = intent.getStringExtra(EXTRA_HOST) ?: host
                 port = intent.getIntExtra(EXTRA_PORT, port)
                 esp32Host = intent.getStringExtra(EXTRA_ESP32) ?: esp32Host
+                nodeHost = intent.getStringExtra(EXTRA_NODE) ?: nodeHost
                 wakePhrase = (intent.getStringExtra(EXTRA_WAKE) ?: wakePhrase)
                     .trim().lowercase().ifEmpty { DEFAULT_WAKE }
                 geminiKey = intent.getStringExtra(EXTRA_GEMINI) ?: geminiKey
@@ -320,8 +323,8 @@ class WakeWordService : Service(), RecognitionListener {
         executor.execute {
             val ok = when (val target = parsed.target) {
                 is CommandParser.Target.Adb -> adb.execute(host, port, target.shell)
-                is CommandParser.Target.Ir -> irRouter.send(esp32Host, target.name)
-                is CommandParser.Target.IrLearned -> irRouter.sendLearned(esp32Host, target.device, target.buttons)
+                is CommandParser.Target.Ir -> irRouter.send(esp32Host, nodeHost, target.name)
+                is CommandParser.Target.IrLearned -> irRouter.sendLearned(esp32Host, nodeHost, target.device, target.buttons)
             }
             handler.post {
                 tone.startTone(if (ok) ToneGenerator.TONE_PROP_ACK else ToneGenerator.TONE_PROP_NACK)

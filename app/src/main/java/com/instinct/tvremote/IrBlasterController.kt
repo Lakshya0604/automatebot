@@ -37,19 +37,23 @@ class IrBlasterController {
     }
 
     fun sendRaw(host: String, body: String): Boolean {
-        if (host.isBlank()) { Logger.log("ESP8266 IP not set"); return false }
+        if (host.isBlank()) { Logger.log("ESP8266 / IR-node address not set"); return false }
         return try {
             val c = URL("http://$host/send").openConnection() as HttpURLConnection
             c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 5000; c.readTimeout = 5000
-            c.outputStream.use { it.write(body.toByteArray()) }
+            // the ESP8266 web server (and the phone node) need a known body length,
+            // not HttpURLConnection's default chunked streaming
+            val bytes = body.toByteArray(Charsets.UTF_8)
+            c.setFixedLengthStreamingMode(bytes.size)
+            c.outputStream.use { it.write(bytes) }
             val ok = c.responseCode in 200..299
             c.disconnect(); ok
-        } catch (e: Exception) { Logger.log("ESP8266 error: ${e.message}"); false }
+        } catch (e: Exception) { Logger.log("IR send error: ${e.message}"); false }
     }
 
     /** Ask the board to listen for a remote button. Blocks up to ~12 s. Returns "freq,us,us,..." or null. */
     fun learn(host: String): String? {
-        if (host.isBlank()) { Logger.log("ESP8266 IP not set"); return null }
+        if (host.isBlank()) { Logger.log("ESP8266 IP not set (learning needs the ESP8266 receiver)") ; return null }
         return try {
             val c = URL("http://$host/learn?timeout=10").openConnection() as HttpURLConnection
             c.connectTimeout = 5000; c.readTimeout = 14000

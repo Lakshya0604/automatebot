@@ -61,8 +61,24 @@ line of sight.
 - `GET /ir?name=<name>` - run a named command from the `commands[]` table
   (the phone app calls this for "AC on", "fan off", ...)
 - `GET /ir/raw?protocol=NEC&code=0x20DF10EF&bits=32` - send any raw IR code
+- `GET /learn?timeout=10` - wait up to N seconds for a remote button press,
+  return the raw timings as "freq,us,us,..." (the app's Learn button uses
+  this; needs the VS1838B receiver on D5)
+- `POST /send` with body "freq,us,us,..." - replay a learned raw signal
+  (the app sends learned buttons this way)
 - `GET /health` - sanity check
 
-To learn your own remotes' codes: flash the IRremoteESP8266 `IRrecvDumpV2`
-example with a VS1838B wired to D5, point the remote at it, press the
-button, and copy the printed protocol/code/bits into `commands[]`.
+The same protocol is spoken by the phone-to-phone IR node in the app
+(`IrNodeServer`), so the app treats the board and a second phone the same
+way - except `/learn`, which only the board can do (phones have no IR
+receiver).
+
+To learn your own remotes' codes by hand instead of through the app: flash
+the IRremoteESP8266 `IRrecvDumpV2` example with a VS1838B wired to D5, point
+the remote at it, press the button, and copy the printed protocol/code/bits
+into `commands[]`.
+
+Compile-verified in CI (GitHub Actions) against esp8266 core 3.1.2 +
+IRremoteESP8266 2.9.0, board `esp8266:esp8266:d1_mini`. The compiled
+`ir_blaster.ino.bin` is attached to each GitHub release - flash it with
+esptool or NodeMCU PyFlasher if you do not want to install the Arduino IDE.

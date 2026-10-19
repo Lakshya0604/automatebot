@@ -11,8 +11,8 @@ android {
         applicationId = "com.instinct.automatebot"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.4.0"
     }
 
     splits {
@@ -46,5 +46,8 @@ android {
 
 dependencies {
     implementation("com.alphacephei:vosk-android:0.3.75")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.12.2")
+    testImplementation("androidx.test:core:1.5.0")
 }
-dependencies { testImplementation("junit:junit:4.13.2") }
