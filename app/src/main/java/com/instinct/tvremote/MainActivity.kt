@@ -66,6 +66,13 @@ class MainActivity : Activity() {
             savePrefs()
             executor.execute { adb.execute(host(), port(), "echo connected") }
         }
+        findViewById<Button>(R.id.webBtn).setOnClickListener {
+            savePrefs()
+            if (dbEdit.text.isBlank()) { Logger.log("Enter the Firebase database URL first"); return@setOnClickListener }
+            val url = "https://lakshya0604.github.io/automatebot/#room=" + roomEdit.text.toString().trim() +
+                "&db=" + java.net.URLEncoder.encode(dbEdit.text.toString().trim(), "UTF-8")
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        }
         findViewById<Button>(R.id.learnBtn).setOnClickListener {
             savePrefs()
             val d = devEdit.text.toString().trim().lowercase(); val b = btnEdit.text.toString().trim().lowercase()
@@ -75,7 +82,8 @@ class MainActivity : Activity() {
                 val text = IrBlasterController().learn(esp32())
                 val sig = text?.let { store.parseLearned(it) }
                 if (sig == null) Logger.log("Nothing learned. Check receiver wiring and ESP8266 IP.")
-                else { store.put(d, b, sig); Logger.log("Learned $d / $b (${sig.raw.size} pulses). Say: \"$d $b\"") }
+                else { store.put(d, b, sig); RemoteRelay.publishDevices(dbEdit.text.toString().trim(), roomEdit.text.toString().trim(), store)
+                    Logger.log("Learned $d / $b (${sig.raw.size} pulses). Say: \"$d $b\"") }
             }
         }
         findViewById<Button>(R.id.testBtn).setOnClickListener {
@@ -86,6 +94,7 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.delBtn).setOnClickListener {
             val d = devEdit.text.toString().trim().lowercase(); val b = btnEdit.text.toString().trim().lowercase()
             store.delete(d, b.ifEmpty { null }); Logger.log("Deleted")
+            RemoteRelay.publishDevices(dbEdit.text.toString().trim(), roomEdit.text.toString().trim(), store)
         }
         findViewById<Button>(R.id.listBtn).setOnClickListener {
             val names = store.deviceNames()

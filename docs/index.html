@@ -73,6 +73,27 @@ code{background:#eef0fb;padding:2px 6px;border-radius:6px;font-size:13px}
 <a class="btn p" href="#download">Download the app</a> <a class="btn s" href="#panel">Open web remote</a>
 </header>
 
+<section id="bot" class="reveal">
+<h2>Talk to the bot</h2>
+<p class="lead">Tap Start bot, then say <b>"bot one"</b>. It answers, then listens. Works while this tab is open (Chrome on Android or desktop).</p>
+<div class="card">
+<div class="row"><button class="btn p" id="botStart">Start bot</button><button class="btn s" id="camBtn">Camera off</button></div>
+<div id="botLog" class="conn" style="margin-top:10px">Bot is off.</div>
+<video id="cam" playsinline muted style="display:none;width:100%;max-width:420px;border-radius:14px;margin-top:12px;background:#000"></video>
+<label>Gemini API key (free, from aistudio.google.com) - only needed for camera</label>
+<input id="gkey" placeholder="paste once, stays in this browser" autocomplete="off">
+<label>Channel numbers (one per line, name=number), for "ye channel lagao"</label>
+<textarea id="chmap" rows="3" style="width:100%;font:14px system-ui;padding:10px;border:1px solid var(--line);border-radius:11px;background:#fbfbfe" placeholder="star plus=5&#10;aaj tak=12"></textarea>
+<div class="conn">With the camera on, say things like "ye channel lagao" while the TV shows the channel logo to the camera, or "isko band karo" while pointing at the AC. A frame is sent to Google Gemini to read it. Nothing else is stored.</div>
+</div>
+</section>
+
+<section id="devs" class="reveal" style="display:none">
+<h2>Your devices</h2>
+<p class="lead">Learned in the app. Tap a button, or say "device name + button".</p>
+<div id="devList"></div>
+</section>
+
 <section id="panel" class="reveal">
 <h2>Web remote</h2>
 <p class="lead">Your phone running Automatebot does the actual work. This page just sends it commands.</p>
@@ -181,6 +202,53 @@ else{var rec=new SR();rec.lang="hi-IN";rec.interimResults=false;rec.maxAlternati
  rec.onerror=function(e){$("heard").textContent="Mic error: "+e.error};
  rec.onresult=function(e){var t=e.results[0][0].transcript;$("heard").textContent=t;send(t)};
  mic.onclick=function(){try{rec.start()}catch(e){rec.stop()}}}
+
+// ---- bot: wake word + voice + camera ----
+var blog=function(t){$("botLog").textContent=t};
+var WAKE=/(bot\s*(one|won|1)|boat\s*one|bought\s*one|बॉट\s*(वन|1)|बोट\s*(वन|1)|बाट\s*वन)/i;
+var DEICTIC=/(\bye\b|\byeh\b|\bthis\b|\bthat\b|\bisko\b|\bise\b|\bwo\b|\bvo\b|ये|यह|इस|वो|वह|dekho|देखो)/i;
+var bot=null,botOn=false,awake=0,camStream=null,gk=$("gkey"),cm=$("chmap"),devices={};
+try{gk.value=localStorage.gkey||"";cm.value=localStorage.chmap||""}catch(e){}
+gk.onchange=cm.onchange=function(){try{localStorage.gkey=gk.value.trim();localStorage.chmap=cm.value}catch(e){}};
+function speak(t){try{speechSynthesis.cancel();var u=new SpeechSynthesisUtterance(t);u.lang=/[\u0900-\u097F]/.test(t)?"hi-IN":"en-IN";speechSynthesis.speak(u)}catch(e){}}
+// device registry published by the phone app: {name:[button,...]}
+function loadDevices(){var b=base();if(!b)return;fetch(b+"/devices.json").then(function(r){return r.json()}).then(function(d){
+ devices=d||{};var box=$("devList");box.innerHTML="";var names=Object.keys(devices);$("devs").style.display=names.length?"block":"none";
+ names.forEach(function(n){var c=document.createElement("div");c.className="card";c.style.marginBottom="12px";var h=document.createElement("b");h.textContent=n;c.appendChild(h);
+  var g=document.createElement("div");g.className="grid";(devices[n]||[]).forEach(function(bn){var k=document.createElement("button");k.className="k";k.textContent=bn;k.onclick=function(){send(n+" "+bn)};g.appendChild(k)});c.appendChild(g);box.appendChild(c)})}).catch(function(){})}
+setTimeout(loadDevices,600);room.addEventListener("change",loadDevices);db.addEventListener("change",loadDevices);
+$("camBtn").onclick=function(){var v=$("cam");
+ if(camStream){camStream.getTracks().forEach(function(t){t.stop()});camStream=null;v.style.display="none";$("camBtn").textContent="Camera off";return}
+ navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false}).then(function(s){camStream=s;v.srcObject=s;v.style.display="block";v.play();$("camBtn").textContent="Camera on"}).catch(function(e){blog("Camera blocked: "+e.name)})};
+function frame(){var v=$("cam");if(!camStream||!v.videoWidth)return null;var c=document.createElement("canvas");var sc=Math.min(1,640/v.videoWidth);c.width=v.videoWidth*sc;c.height=v.videoHeight*sc;c.getContext("2d").drawImage(v,0,0,c.width,c.height);return c.toDataURL("image/jpeg",.7).split(",")[1]}
+function vision(text,img){var key=gk.value.trim();if(!key){blog("Add the Gemini key to use the camera.");speak("Camera ke liye Gemini key chahiye.");return}
+ var dl=Object.keys(devices).map(function(n){return n+": "+(devices[n]||[]).join(", ")}).join("\n");
+ var prompt="You are a home remote assistant. The user said: \""+text+"\". The image is from their camera: it may show a TV screen, a channel logo, or a device such as an AC or fan. "+
+ "Decide ONE command in simple words. Built-in TV commands: volume up, volume down, mute, channel up, channel down, home, back, open youtube, open netflix, open prime, open hotstar, tv off, tv on. "+
+ "Learned devices and their buttons (command = '<device> <button>'):\n"+(dl||"none")+"\nFor a channel by name use 'channel N' with N only from this list (name=number):\n"+cm.value+"\n"+
+ "If you cannot tell, use command \"none\". Reply JSON {\"command\":\"...\",\"say\":\"one short sentence in the user's language\",\"seen\":\"what you see\"}.";
+ blog("Looking...");
+ fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":key},
+  body:JSON.stringify({contents:[{parts:[{text:prompt},{inline_data:{mime_type:"image/jpeg",data:img}}]}],generationConfig:{responseMimeType:"application/json",temperature:0}})})
+ .then(function(r){if(!r.ok)throw new Error("Gemini HTTP "+r.status);return r.json()}).then(function(j){
+  var o=JSON.parse(j.candidates[0].content.parts[0].text);blog("Saw: "+(o.seen||"?")+" -> "+o.command);if(o.say)speak(o.say);
+  if(o.command&&o.command!=="none")send(o.command)}).catch(function(e){blog("Vision failed: "+e.message)})}
+function handle(text){
+ var img=DEICTIC.test(text)?frame():null;
+ if(img){vision(text,img)}else{blog("Command: "+text);send(text)}}
+function onBotResult(e){
+ for(var i=e.resultIndex;i<e.results.length;i++){if(!e.results[i].isFinal)continue;
+  var t=e.results[i][0].transcript.trim();$("heard").textContent=t;
+  var m=t.match(WAKE);
+  if(m){awake=Date.now()+10000;var rest=t.slice(m.index+m[0].length).replace(/^[\s,.]+/,"");
+   if(rest.length>2){handle(rest)}else{var names=Object.keys(devices).join(", ");speak("Haan, bataiye. Main TV, volume, channel, apps"+(names?", aur "+names:", AC, pankha aur IR devices")+" chala sakta hoon.");blog("Awake. Speak your command...")}}
+  else if(Date.now()<awake){awake=0;handle(t)}}}
+$("botStart").onclick=function(){
+ if(!SR){blog("Voice needs Chrome.");return}
+ if(botOn){botOn=false;bot.stop();$("botStart").textContent="Start bot";blog("Bot is off.");return}
+ bot=new SR();bot.continuous=true;bot.interimResults=false;bot.lang="hi-IN";bot.onresult=onBotResult;
+ bot.onend=function(){if(botOn)try{bot.start()}catch(e){}};bot.onerror=function(e){if(e.error==="not-allowed")botOn=false;blog("Mic: "+e.error)};
+ botOn=true;try{bot.start()}catch(e){}$("botStart").textContent="Stop bot";blog('Listening for "bot one"...');speak("Bot one ready.");loadDevices()};
 var io=new IntersectionObserver(function(es){es.forEach(function(x){if(x.isIntersecting){x.target.classList.add("in");io.unobserve(x.target)}})},{threshold:.08});
 document.querySelectorAll(".reveal").forEach(function(e){io.observe(e)});
 })();

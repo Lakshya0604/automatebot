@@ -20,6 +20,23 @@ class RemoteRelay(
     private var thread: Thread? = null
     private var lastTs = -1L
 
+    companion object {
+        /** Publish the device registry ({name:[buttons]}) so the website can show and use it. */
+        fun publishDevices(dbUrl: String, room: String, store: DeviceStore) {
+            if (dbUrl.isBlank() || room.length < 16) return
+            Thread {
+                try {
+                    val o = JSONObject()
+                    for (d in store.deviceNames()) o.put(d, org.json.JSONArray(store.buttonNames(d)))
+                    val c = URL("${dbUrl.trimEnd('/')}/rooms/$room/devices.json").openConnection() as HttpURLConnection
+                    c.requestMethod = "PUT"; c.doOutput = true; c.connectTimeout = 5000; c.readTimeout = 5000
+                    c.outputStream.use { it.write(o.toString().toByteArray()) }
+                    c.responseCode; c.disconnect()
+                } catch (_: Exception) {}
+            }.start()
+        }
+    }
+
     fun start() {
         if (dbUrl.isBlank() || room.length < 16) { Logger.log("Web control off (set DB URL + room code)"); return }
         running = true

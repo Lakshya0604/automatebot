@@ -147,6 +147,12 @@
             android:text="List learned devices" />
 
         <Button
+            android:id="@+id/webBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Open web remote (pairs automatically)" />
+
+        <Button
             android:id="@+id/connectBtn"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

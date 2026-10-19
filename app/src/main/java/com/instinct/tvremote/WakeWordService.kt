@@ -119,6 +119,7 @@ class WakeWordService : Service(), RecognitionListener {
                 relay = RemoteRelay(intent.getStringExtra(EXTRA_DB) ?: "", intent.getStringExtra(EXTRA_ROOM) ?: "") { text ->
                     handler.post { handleRemoteText(text) }
                 }.also { it.start() }
+                RemoteRelay.publishDevices(intent.getStringExtra(EXTRA_DB) ?: "", intent.getStringExtra(EXTRA_ROOM) ?: "", devices)
             }
         }
         return START_STICKY
