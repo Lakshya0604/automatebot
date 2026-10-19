@@ -14,7 +14,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Instinct TV - voice remote"
+            android:text="Automatebot - voice remote"
             android:textSize="20sp"
             android:textStyle="bold"
             android:paddingBottom="16dp" />
@@ -52,7 +52,7 @@
             android:id="@+id/wakeEdit"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="instinct"
+            android:text="bot one"
             android:inputType="text|textNoSuggestions" />
 
         <TextView
@@ -65,6 +65,18 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:hint="leave empty for now"
+            android:inputType="text|textNoSuggestions" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Gemini API key (optional, free, helps with free-form speech)" />
+
+        <EditText
+            android:id="@+id/geminiEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="leave empty to skip"
             android:inputType="text|textNoSuggestions" />
 
         <Button

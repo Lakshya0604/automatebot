@@ -1,4 +1,4 @@
-# Instinct TV - voice remote for Android TV (and IR devices later)
+# Automatebot - voice remote for Android TV (and IR devices later)
 
 An Alexa-style Android app: say the wake word, the phone beeps, say a command,
 and your Android TV obeys - power, volume, channels, launching apps. The phone
@@ -16,7 +16,7 @@ voice -> phone mic -> Vosk (offline wake word + speech-to-text)
 ```
 
 - **Wake word + commands**: [Vosk](https://alphacephei.com/vosk/) small English
-  model, fully offline. Wake word is configurable in the app (default "instinct").
+  model, fully offline. Wake word is configurable in the app (default "bot one").
 - **TV control**: ADB over WiFi using
   [AdbLib](https://github.com/cgutman/AdbLib) (sources vendored in
   `app/src/main/java/com/cgutman/adblib`, BSD license - see `licenses/`).
@@ -63,7 +63,7 @@ voice -> phone mic -> Vosk (offline wake word + speech-to-text)
 1. Enter the TV IP, tap **Connect to TV**. The TV shows an
    **"Allow debugging?"** prompt - accept it (tick "always allow").
 2. Tap **Start listening**, allow the microphone.
-3. Say the wake word ("instinct"), wait for the beep, say a command.
+3. Say the wake word ("bot one"), wait for the beep, say a command.
    Another beep = done, a low buzz = it didn't understand.
 4. Use the on-screen buttons (Power / Vol / Home / YouTube) to test the TV
    connection without voice.
@@ -91,3 +91,11 @@ voice -> phone mic -> Vosk (offline wake word + speech-to-text)
 
 App code: MIT (see LICENSE). AdbLib: BSD (licenses/ADBLIB-LICENSE.txt).
 Vosk: Apache-2.0. Vosk models: Apache-2.0.
+
+
+## v0.2: Hindi / Hinglish / English
+
+- Wake word is "bot one" (offline, Vosk). Change it in the app if you like.
+- After the beep, the command is heard by the phone's Google speech service set to Hindi (hi-IN) with English added, so Hindi, Hinglish and English all work. Needs internet. If the service is missing or offline, it falls back to offline English.
+- CommandParser understands Devanagari and Roman Hindi, e.g. "volume badhao", "टीवी बंद करो", "youtube kholo".
+- Optional: paste a free Gemini API key (aistudio.google.com) in the app. Anything the parser does not recognise is sent to Gemini, which can only choose from the fixed list of commands.

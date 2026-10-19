@@ -12,6 +12,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.speech.RecognitionListener as AndroidRecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.os.Bundle
 import org.json.JSONObject
 import org.vosk.Recognizer
 import org.vosk.Model
@@ -35,6 +39,8 @@ class WakeWordService : Service(), RecognitionListener {
         const val EXTRA_PORT = "port"
         const val EXTRA_WAKE = "wake"
         const val EXTRA_ESP32 = "esp32"
+        const val EXTRA_GEMINI = "gemini"
+        const val DEFAULT_WAKE = "bot one"
         private const val CHANNEL_ID = "listening"
         private const val COMMAND_WINDOW_MS = 8000L
     }
@@ -52,7 +58,10 @@ class WakeWordService : Service(), RecognitionListener {
     private var host = ""
     private var port = 5555
     private var esp32Host = ""
-    private var wakePhrase = "instinct"
+    private var wakePhrase = DEFAULT_WAKE
+    private var geminiKey = ""
+    private var cloud: SpeechRecognizer? = null
+    private val wakeAliases = setOf("bot one", "bot won", "boat one", "bought one", "bot 1", "but one", "bott one")
 
     private lateinit var adb: AdbController
     private lateinit var irRouter: IrRouter
@@ -99,7 +108,8 @@ class WakeWordService : Service(), RecognitionListener {
                 port = intent.getIntExtra(EXTRA_PORT, port)
                 esp32Host = intent.getStringExtra(EXTRA_ESP32) ?: esp32Host
                 wakePhrase = (intent.getStringExtra(EXTRA_WAKE) ?: wakePhrase)
-                    .trim().lowercase().ifEmpty { "instinct" }
+                    .trim().lowercase().ifEmpty { DEFAULT_WAKE }
+                geminiKey = intent.getStringExtra(EXTRA_GEMINI) ?: geminiKey
             }
         }
         return START_STICKY
@@ -112,16 +122,98 @@ class WakeWordService : Service(), RecognitionListener {
     private fun startWakeMode() {
         mode = Mode.WAKE
         handler.removeCallbacks(commandTimeout)
-        val grammar = "[\"${wakePhrase.replace("\"", "")}\", \"[unk]\"]"
+        val phrases = (if (wakePhrase == DEFAULT_WAKE) wakeAliases else setOf(wakePhrase))
+        val grammar = phrases.joinToString(",", "[", ",\"[unk]\"]") { "\"" + it.replace("\"", "") + "\"" }
         switchRecognizer(Recognizer(model ?: return, 16000.0f, grammar))
     }
 
     private fun startCommandMode() {
         mode = Mode.COMMAND
+        handler.removeCallbacks(commandTimeout)
+        if (SpeechRecognizer.isRecognitionAvailable(this)) {
+            try { speech?.stop(); speech?.shutdown() } catch (_: Exception) {}
+            speech = null
+            handler.postDelayed({ startCloudListen() }, 250)
+        } else {
+            startVoskCommand()
+        }
+    }
+
+    private fun startVoskCommand() {
+        mode = Mode.COMMAND
         switchRecognizer(Recognizer(model ?: return, 16000.0f))
-        Logger.log("Yes? Say a command...")
+        Logger.log("Yes? Say a command (English only, offline)...")
         handler.removeCallbacks(commandTimeout)
         handler.postDelayed(commandTimeout, COMMAND_WINDOW_MS)
+    }
+
+    /** Hindi / Hinglish / English via the phone's Google speech service (free). */
+    private fun startCloudListen() {
+        try {
+            cloud?.destroy()
+            val r = SpeechRecognizer.createSpeechRecognizer(this)
+            cloud = r
+            r.setRecognitionListener(object : AndroidRecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) { Logger.log("Yes? Say a command (Hindi / English)...") }
+                override fun onBeginningOfSpeech() {}
+                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onBufferReceived(buffer: ByteArray?) {}
+                override fun onEndOfSpeech() {}
+                override fun onPartialResults(partialResults: Bundle?) {}
+                override fun onEvent(eventType: Int, params: Bundle?) {}
+                override fun onError(error: Int) {
+                    Logger.log("Speech service error $error")
+                    cloud?.destroy(); cloud = null
+                    if (error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT ||
+                        error == SpeechRecognizer.ERROR_SERVER || error == SpeechRecognizer.ERROR_CLIENT) {
+                        Logger.log("Falling back to offline English")
+                        startVoskCommand()
+                    } else {
+                        tone.startTone(ToneGenerator.TONE_PROP_NACK)
+                        startWakeMode()
+                    }
+                }
+                override fun onResults(results: Bundle?) {
+                    val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) ?: arrayListOf()
+                    cloud?.destroy(); cloud = null
+                    runCommandAlternatives(list)
+                }
+            })
+            val i = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "hi-IN")
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "hi-IN")
+                .putExtra("android.speech.extra.ADDITIONAL_LANGUAGES", arrayOf("en-IN"))
+                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                .putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
+            r.startListening(i)
+        } catch (e: Exception) {
+            Logger.log("Cloud speech failed: ${e.message}")
+            startVoskCommand()
+        }
+    }
+
+    private fun runCommandAlternatives(alts: List<String>) {
+        if (alts.isEmpty()) {
+            tone.startTone(ToneGenerator.TONE_PROP_NACK); startWakeMode(); return
+        }
+        Logger.log("Heard: \"${alts.first()}\"")
+        for (a in alts) {
+            val p = CommandParser.parse(a)
+            if (p != null) { execute(p); return }
+        }
+        if (geminiKey.isBlank()) { unknown(alts.first()); return }
+        executor.execute {
+            val id = GeminiIntent.resolve(geminiKey, alts.first())
+            val p = id?.let { CommandParser.fromIntent(it) }
+            handler.post { if (p != null) execute(p) else unknown(alts.first()) }
+        }
+    }
+
+    private fun unknown(text: String) {
+        Logger.log("Unknown command: \"$text\"")
+        tone.startTone(ToneGenerator.TONE_PROP_NACK)
+        startWakeMode()
     }
 
     private fun switchRecognizer(recognizer: Recognizer) {
@@ -170,7 +262,8 @@ class WakeWordService : Service(), RecognitionListener {
         if (text.isBlank()) return
         when (mode) {
             Mode.WAKE -> {
-                if (text.trim().equals(wakePhrase, ignoreCase = true)) {
+                val heard = text.trim().lowercase()
+                if (heard == wakePhrase || (wakePhrase == DEFAULT_WAKE && heard in wakeAliases)) {
                     tone.startTone(ToneGenerator.TONE_PROP_ACK)
                     startCommandMode()
                 }
@@ -184,12 +277,11 @@ class WakeWordService : Service(), RecognitionListener {
 
     private fun runCommand(text: String) {
         val parsed = CommandParser.parse(text)
-        if (parsed == null) {
-            Logger.log("Unknown command: \"$text\"")
-            tone.startTone(ToneGenerator.TONE_PROP_NACK)
-            startWakeMode()
-            return
-        }
+        if (parsed == null) { unknown(text); return }
+        execute(parsed)
+    }
+
+    private fun execute(parsed: CommandParser.Parsed) {
         Logger.log("Command: ${parsed.description}")
         executor.execute {
             val ok = when (val target = parsed.target) {
@@ -218,7 +310,7 @@ class WakeWordService : Service(), RecognitionListener {
         val builder = if (Build.VERSION.SDK_INT >= 26)
             Notification.Builder(this, CHANNEL_ID) else Notification.Builder(this)
         val notification = builder
-            .setContentTitle("Instinct TV")
+            .setContentTitle("Automatebot")
             .setContentText("Voice control is listening")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .build()
@@ -232,6 +324,7 @@ class WakeWordService : Service(), RecognitionListener {
     override fun onDestroy() {
         handler.removeCallbacks(commandTimeout)
         try { speech?.shutdown() } catch (_: Exception) {}
+        try { cloud?.destroy() } catch (_: Exception) {}
         executor.shutdownNow()
         tone.release()
         adb.disconnect()

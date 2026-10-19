@@ -1,11 +1,13 @@
 package com.instinct.tvremote
 
 /**
- * Turns recognized speech into a device action.
+ * Turns recognized speech (English, Hindi in Devanagari, or Hinglish in Roman letters)
+ * into a device action.
  *
- * Every command resolves to a [Target]: an ADB shell command for the Android TV,
- * or an IR/relay action routed through the ESP8266 (stage 2). Adding a new command means
- * adding a rule here and (optionally) a named command in the ESP8266 firmware.
+ * Each rule is a list of groups. A group is "a|b|c" alternatives; every group must match
+ * at least one token of the sentence. A pattern matches a token by prefix, or exactly when
+ * written as "=word". Nukta marks are stripped so "बढ़" and "बढ" are the same.
+ * Anything not understood here can go to [GeminiIntent] (optional, free API key).
  */
 object CommandParser {
 
@@ -16,73 +18,101 @@ object CommandParser {
 
     data class Parsed(val description: String, val target: Target)
 
-    /** Android TV package names for "open <app>" commands. */
-    private val tvApps = linkedMapOf(
-        "you tube" to "com.google.android.youtube.tv",
-        "youtube" to "com.google.android.youtube.tv",
-        "netflix" to "com.netflix.ninja",
-        "prime video" to "com.amazon.amazonvideo.livingroom",
-        "prime" to "com.amazon.amazonvideo.livingroom",
-        "hotstar" to "in.startv.hotstar",
-        "play store" to "com.android.vending",
-        "spotify" to "com.spotify.tv.android"
+    private class Rule(val intent: String, vararg val groups: String)
+
+    private const val VOL = "vol|वॉल्यूम|वाल्यूम|वोल्यूम|awaz|awaaz|aawaz|avaz|आवाज|आवाज़|sound|साउंड"
+    private const val UP = "up|=high|=badh|badha|बढ|zyada|zyaada|ज्यादा|ज़्यादा|increase|tez|तेज|louder|ऊपर|upar"
+    private const val DOWN = "down|kam|कम|ghata|घटा|decrease|=low|lower|dheere|dheeraj|धीरे|नीचे|neeche|quiet"
+    private const val OFF = "=off|band|bandh|बंद|बन्द|ऑफ|आफ|=of|बंध|stop|shutdown|shut"
+    private const val ON = "=on|chalu|chaalu|चालू|ऑन|आन|shuru|शुरू|=start|jala|जला"
+    private const val TV = "tv|टीवी|टी वी|ti vi|television|टेलीविजन|=power|पावर"
+    private const val AC = "=ac|एसी|ए सी|air|एयर|conditioner|कंडीशनर"
+    private const val FAN = "fan|फैन|pankha|पंखा|पंखे"
+    private const val OPENV = "open|launch|=start|chalu|chaalu|chala|चला|चालू|खोल|khol|lagao|लगा|dikha|दिखा|=play|=on|ऑन|=run"
+
+    private val rules = listOf(
+        Rule("ch_up", "channel|चैनल|चेनल|chanel", "up|next|agla|अगला|aage|आगे|badh|बढ"),
+        Rule("ch_down", "channel|चैनल|चेनल|chanel", "down|previous|prev|pichla|पिछला|peeche|पीछे|back"),
+        Rule("vol_up", VOL, UP),
+        Rule("vol_down", VOL, DOWN),
+        Rule("vol_up", "louder|=badhao|बढ़ाओ|बढाओ"),
+        Rule("vol_down", "quieter|=kam|=कम"),
+        Rule("mute", "mute|unmute|म्यूट|चुप|chup|khamosh|खामोश|silent"),
+        Rule("ac_off", AC, OFF), Rule("ac_on", AC, ON),
+        Rule("fan_off", FAN, OFF), Rule("fan_on", FAN, ON),
+        Rule("open_youtube", "youtube|you|यूट्यूब|यू|यूटयूब|utube|ट्यूब|tube"),
+        Rule("open_netflix", "netflix|नेटफ्लिक्स|नेटफ्लिकस|netflics"),
+        Rule("open_prime", "prime|प्राइम|amazon|अमेज़न|अमेजन"),
+        Rule("open_hotstar", "hotstar|हॉटस्टार|होटस्टार|हॉट|hot"),
+        Rule("open_playstore", "store|स्टोर|playstore"),
+        Rule("open_spotify", "spotify|स्पॉटिफाई|स्पोटिफाई|spotifi"),
+        Rule("settings", "settings|setting|सेटिंग|सेटींग"),
+        Rule("power_off", OFF),
+        Rule("power_on", ON),
+        Rule("home", "home|होम|=ghar|घर"),
+        Rule("back", "=back|वापस|wapas|vapas|बैक|piche|पीछे"),
+        Rule("select", "=ok|okay|ओके|ओके|select|सेलेक्ट|enter|चुनो|chuno|=haan|हाँ|हां"),
+        Rule("play_pause", "pause|=play|रुक|ruk|रोक|rok|प्ले|पॉज|पोज|चला|chala|resume")
     )
 
-    /** Named IR signals the ESP8266 firmware knows how to send (stage 2). */
-    private val irCommands = linkedMapOf(
-        "ac on" to "ac_power",
-        "ac off" to "ac_power",
-        "air conditioner on" to "ac_power",
-        "air conditioner off" to "ac_power",
-        "fan on" to "fan_power",
-        "fan off" to "fan_power"
+    private fun norm(s: String): String = s.lowercase()
+        .replace("\u093C", "")
+        .replace("ड़", "ड").replace("ढ़", "ढ")
+        .replace(Regex("[^\\p{L}\\p{M}\\p{N}]+"), " ")
+        .trim()
+
+    private fun matchesGroup(tokens: List<String>, group: String): Boolean =
+        group.split("|").any { p ->
+            val q = norm(p.removePrefix("="))
+            if (q.isEmpty()) false
+            else if (p.startsWith("=")) tokens.any { it == q }
+            else tokens.any { it.startsWith(q) } || (q.contains(' ') && tokens.joinToString(" ").contains(q))
+        }
+
+    private fun key(code: Int, desc: String) = Parsed(desc, Target.Adb("input keyevent $code"))
+
+    private fun app(pkg: String, name: String) = Parsed(
+        "Open $name",
+        Target.Adb("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
     )
 
-    private fun key(code: Int, desc: String) =
-        Parsed(desc, Target.Adb("input keyevent $code"))
+    /** Intent ids the parser and Gemini share. */
+    val intentIds = listOf(
+        "vol_up", "vol_down", "mute", "ch_up", "ch_down", "power_off", "power_on", "home", "back",
+        "select", "play_pause", "open_youtube", "open_netflix", "open_prime", "open_hotstar",
+        "open_playstore", "open_spotify", "settings", "ac_on", "ac_off", "fan_on", "fan_off"
+    )
+
+    fun fromIntent(id: String): Parsed? = when (id) {
+        "vol_up" -> key(24, "Volume up")
+        "vol_down" -> key(25, "Volume down")
+        "mute" -> key(164, "Mute / unmute")
+        "ch_up" -> key(166, "Channel up")
+        "ch_down" -> key(167, "Channel down")
+        "power_off" -> key(26, "TV power (toggle)")
+        "power_on" -> key(224, "TV wake")
+        "home" -> key(3, "Home")
+        "back" -> key(4, "Back")
+        "select" -> key(23, "Select / OK")
+        "play_pause" -> key(85, "Play / pause")
+        "open_youtube" -> app("com.google.android.youtube.tv", "YouTube")
+        "open_netflix" -> app("com.netflix.ninja", "Netflix")
+        "open_prime" -> app("com.amazon.amazonvideo.livingroom", "Prime Video")
+        "open_hotstar" -> app("in.startv.hotstar", "Hotstar")
+        "open_playstore" -> app("com.android.vending", "Play Store")
+        "open_spotify" -> app("com.spotify.tv.android", "Spotify")
+        "settings" -> Parsed("Open TV settings", Target.Adb("am start -a android.settings.SETTINGS"))
+        "ac_on", "ac_off" -> Parsed("IR: AC power", Target.Ir("ac_power"))
+        "fan_on", "fan_off" -> Parsed("IR: fan power", Target.Ir("fan_power"))
+        else -> null
+    }
 
     fun parse(raw: String): Parsed? {
-        val t = " " + raw.lowercase().trim().replace(Regex("\\s+"), " ") + " "
-        if (t.trim().isEmpty()) return null
-
-        // "open youtube", "launch netflix", ...
-        if (t.contains(" open ") || t.contains(" launch ") || t.contains(" start ")) {
-            for ((name, pkg) in tvApps) {
-                if (t.contains(" $name ")) {
-                    return Parsed(
-                        "Open ${name.trim()}",
-                        Target.Adb("monkey -p $pkg -c android.intent.category.LAUNCHER 1")
-                    )
-                }
-            }
-            if (t.contains(" settings ")) {
-                return Parsed("Open TV settings", Target.Adb("am start -a android.settings.SETTINGS"))
-            }
+        val tokens = norm(raw).split(" ").filter { it.isNotEmpty() }
+        if (tokens.isEmpty()) return null
+        for (r in rules) {
+            if (r.groups.all { matchesGroup(tokens, it) }) return fromIntent(r.intent)
         }
-
-        // IR / relay devices (ESP8266, stage 2)
-        for ((phrase, irName) in irCommands) {
-            if (t.contains(" $phrase ")) {
-                return Parsed("IR: $phrase", Target.Ir(irName))
-            }
-        }
-
-        return when {
-            t.contains(" volume up ") || t.contains(" louder ") -> key(24, "Volume up")
-            t.contains(" volume down ") || t.contains(" quieter ") -> key(25, "Volume down")
-            t.contains(" mute ") || t.contains(" unmute ") -> key(164, "Mute / unmute")
-            t.contains(" channel up ") || t.contains(" next channel ") -> key(166, "Channel up")
-            t.contains(" channel down ") || t.contains(" previous channel ") -> key(167, "Channel down")
-            t.contains(" turn off ") || t.contains(" switch off ") || t.contains(" tv off ") || t.contains(" power off ") ->
-                key(26, "TV power (toggle)")
-            t.contains(" turn on ") || t.contains(" switch on ") || t.contains(" tv on ") || t.contains(" power on ") ->
-                key(224, "TV wake")
-            t.contains(" home ") -> key(3, "Home")
-            t.contains(" back ") -> key(4, "Back")
-            t.contains(" select ") || t.contains(" okay ") || t.contains(" ok ") || t.contains(" enter ") ->
-                key(23, "Select / OK")
-            t.contains(" pause ") || t.contains(" play ") -> key(85, "Play / pause")
-            else -> null
-        }
+        return null
     }
 }

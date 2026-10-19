@@ -11,8 +11,8 @@ android {
         applicationId = "com.instinct.tvremote"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     splits {
@@ -36,3 +36,4 @@ android {
 dependencies {
     implementation("com.alphacephei:vosk-android:0.3.75")
 }
+dependencies { testImplementation("junit:junit:4.13.2") }

@@ -21,6 +21,7 @@ class MainActivity : Activity() {
     private lateinit var portEdit: EditText
     private lateinit var wakeEdit: EditText
     private lateinit var esp32Edit: EditText
+    private lateinit var geminiEdit: EditText
 
     private val executor = Executors.newSingleThreadExecutor()
     private val adb by lazy { AdbController(this) }
@@ -35,11 +36,13 @@ class MainActivity : Activity() {
         portEdit = findViewById(R.id.portEdit)
         wakeEdit = findViewById(R.id.wakeEdit)
         esp32Edit = findViewById(R.id.esp32Edit)
+        geminiEdit = findViewById(R.id.geminiEdit)
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         ipEdit.setText(prefs.getString("ip", ""))
         portEdit.setText(prefs.getString("port", "5555"))
-        wakeEdit.setText(prefs.getString("wake", "instinct"))
+        wakeEdit.setText(prefs.getString("wake_v2", "bot one"))
+        geminiEdit.setText(prefs.getString("gemini", ""))
         esp32Edit.setText(prefs.getString("esp32", ""))
 
         findViewById<Button>(R.id.connectBtn).setOnClickListener {
@@ -107,6 +110,7 @@ class MainActivity : Activity() {
             .putExtra(WakeWordService.EXTRA_PORT, port())
             .putExtra(WakeWordService.EXTRA_WAKE, wake())
             .putExtra(WakeWordService.EXTRA_ESP32, esp32())
+            .putExtra(WakeWordService.EXTRA_GEMINI, geminiEdit.text.toString().trim())
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
     }
 
@@ -114,13 +118,14 @@ class MainActivity : Activity() {
         getSharedPreferences("settings", MODE_PRIVATE).edit()
             .putString("ip", host())
             .putString("port", portEdit.text.toString().trim())
-            .putString("wake", wake())
+            .putString("wake_v2", wake())
+            .putString("gemini", geminiEdit.text.toString().trim())
             .putString("esp32", esp32())
             .apply()
     }
 
     private fun host() = ipEdit.text.toString().trim()
     private fun port() = portEdit.text.toString().trim().toIntOrNull() ?: 5555
-    private fun wake() = wakeEdit.text.toString().trim().lowercase().ifEmpty { "instinct" }
+    private fun wake() = wakeEdit.text.toString().trim().lowercase().ifEmpty { "bot one" }
     private fun esp32() = esp32Edit.text.toString().trim()
 }
