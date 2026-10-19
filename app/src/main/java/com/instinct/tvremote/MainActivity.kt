@@ -22,6 +22,11 @@ class MainActivity : Activity() {
     private lateinit var wakeEdit: EditText
     private lateinit var esp32Edit: EditText
     private lateinit var geminiEdit: EditText
+    private lateinit var dbEdit: EditText
+    private lateinit var roomEdit: EditText
+    private lateinit var devEdit: EditText
+    private lateinit var btnEdit: EditText
+    private val store by lazy { DeviceStore(this) }
 
     private val executor = Executors.newSingleThreadExecutor()
     private val adb by lazy { AdbController(this) }
@@ -37,17 +42,55 @@ class MainActivity : Activity() {
         wakeEdit = findViewById(R.id.wakeEdit)
         esp32Edit = findViewById(R.id.esp32Edit)
         geminiEdit = findViewById(R.id.geminiEdit)
+        dbEdit = findViewById(R.id.dbEdit)
+        roomEdit = findViewById(R.id.roomEdit)
+        devEdit = findViewById(R.id.devEdit)
+        btnEdit = findViewById(R.id.btnEdit)
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         ipEdit.setText(prefs.getString("ip", ""))
         portEdit.setText(prefs.getString("port", "5555"))
         wakeEdit.setText(prefs.getString("wake_v2", "bot one"))
         geminiEdit.setText(prefs.getString("gemini", ""))
+        dbEdit.setText(prefs.getString("db", ""))
+        var room = prefs.getString("room", "") ?: ""
+        if (room.length < 16) {
+            val b = ByteArray(16); java.security.SecureRandom().nextBytes(b)
+            room = b.joinToString("") { "%02x".format(it) }
+            prefs.edit().putString("room", room).apply()
+        }
+        roomEdit.setText(room)
         esp32Edit.setText(prefs.getString("esp32", ""))
 
         findViewById<Button>(R.id.connectBtn).setOnClickListener {
             savePrefs()
             executor.execute { adb.execute(host(), port(), "echo connected") }
+        }
+        findViewById<Button>(R.id.learnBtn).setOnClickListener {
+            savePrefs()
+            val d = devEdit.text.toString().trim().lowercase(); val b = btnEdit.text.toString().trim().lowercase()
+            if (d.isEmpty() || b.isEmpty()) { Logger.log("Enter device and button name first"); return@setOnClickListener }
+            Logger.log("Press '$b' on the $d remote now, pointing at the ESP8266 receiver (10 s)...")
+            executor.execute {
+                val text = IrBlasterController().learn(esp32())
+                val sig = text?.let { store.parseLearned(it) }
+                if (sig == null) Logger.log("Nothing learned. Check receiver wiring and ESP8266 IP.")
+                else { store.put(d, b, sig); Logger.log("Learned $d / $b (${sig.raw.size} pulses). Say: \"$d $b\"") }
+            }
+        }
+        findViewById<Button>(R.id.testBtn).setOnClickListener {
+            savePrefs()
+            val d = devEdit.text.toString().trim().lowercase(); val b = btnEdit.text.toString().trim().lowercase()
+            executor.execute { Logger.log(if (IrRouter(this).sendLearned(esp32(), d, listOf(b))) "Sent" else "Failed") }
+        }
+        findViewById<Button>(R.id.delBtn).setOnClickListener {
+            val d = devEdit.text.toString().trim().lowercase(); val b = btnEdit.text.toString().trim().lowercase()
+            store.delete(d, b.ifEmpty { null }); Logger.log("Deleted")
+        }
+        findViewById<Button>(R.id.listBtn).setOnClickListener {
+            val names = store.deviceNames()
+            if (names.isEmpty()) Logger.log("No learned devices yet")
+            names.forEach { Logger.log("$it: ${store.buttonNames(it).joinToString(", ")}") }
         }
         findViewById<Button>(R.id.powerBtn).setOnClickListener { quick("input keyevent 26") }
         findViewById<Button>(R.id.volUpBtn).setOnClickListener { quick("input keyevent 24") }
@@ -110,6 +153,8 @@ class MainActivity : Activity() {
             .putExtra(WakeWordService.EXTRA_PORT, port())
             .putExtra(WakeWordService.EXTRA_WAKE, wake())
             .putExtra(WakeWordService.EXTRA_ESP32, esp32())
+            .putExtra(WakeWordService.EXTRA_DB, dbEdit.text.toString().trim())
+            .putExtra(WakeWordService.EXTRA_ROOM, roomEdit.text.toString().trim())
             .putExtra(WakeWordService.EXTRA_GEMINI, geminiEdit.text.toString().trim())
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
     }
@@ -120,6 +165,8 @@ class MainActivity : Activity() {
             .putString("port", portEdit.text.toString().trim())
             .putString("wake_v2", wake())
             .putString("gemini", geminiEdit.text.toString().trim())
+            .putString("db", dbEdit.text.toString().trim())
+            .putString("room", roomEdit.text.toString().trim())
             .putString("esp32", esp32())
             .apply()
     }

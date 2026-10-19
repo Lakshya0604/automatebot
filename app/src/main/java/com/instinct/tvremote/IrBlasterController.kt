@@ -35,4 +35,26 @@ class IrBlasterController {
             false
         }
     }
+
+    fun sendRaw(host: String, body: String): Boolean {
+        if (host.isBlank()) { Logger.log("ESP8266 IP not set"); return false }
+        return try {
+            val c = URL("http://$host/send").openConnection() as HttpURLConnection
+            c.requestMethod = "POST"; c.doOutput = true; c.connectTimeout = 5000; c.readTimeout = 5000
+            c.outputStream.use { it.write(body.toByteArray()) }
+            val ok = c.responseCode in 200..299
+            c.disconnect(); ok
+        } catch (e: Exception) { Logger.log("ESP8266 error: ${e.message}"); false }
+    }
+
+    /** Ask the board to listen for a remote button. Blocks up to ~12 s. Returns "freq,us,us,..." or null. */
+    fun learn(host: String): String? {
+        if (host.isBlank()) { Logger.log("ESP8266 IP not set"); return null }
+        return try {
+            val c = URL("http://$host/learn?timeout=10").openConnection() as HttpURLConnection
+            c.connectTimeout = 5000; c.readTimeout = 14000
+            val text = if (c.responseCode == 200) c.inputStream.bufferedReader().readText() else null
+            c.disconnect(); text
+        } catch (e: Exception) { Logger.log("Learn error: ${e.message}"); null }
+    }
 }

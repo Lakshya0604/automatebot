@@ -14,6 +14,7 @@ object CommandParser {
     sealed class Target {
         data class Adb(val shell: String) : Target()
         data class Ir(val name: String) : Target()
+        data class IrLearned(val device: String, val buttons: List<String>) : Target()
     }
 
     data class Parsed(val description: String, val target: Target)

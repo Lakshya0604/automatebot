@@ -35,4 +35,11 @@ class PhoneIrController(context: Context) {
             false
         }
     }
+
+    fun sendRaw(freq: Int, raw: IntArray): Boolean {
+        val ir = irManager ?: return false
+        return try { ir.transmit(freq, raw); true } catch (e: Exception) {
+            Logger.log("Phone IR error: ${e.message}"); false
+        }
+    }
 }

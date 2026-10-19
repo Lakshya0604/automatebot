@@ -79,6 +79,73 @@
             android:hint="leave empty to skip"
             android:inputType="text|textNoSuggestions" />
 
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Website control (optional): Firebase database URL" />
+
+        <EditText
+            android:id="@+id/dbEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="https://xxxx-default-rtdb.firebaseio.com"
+            android:inputType="text|textNoSuggestions" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Website room code (secret, auto-created; enter it on the website)" />
+
+        <EditText
+            android:id="@+id/roomEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="auto"
+            android:inputType="text|textNoSuggestions" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="IR devices: device name (e.g. ac, fan, set top box) and button (e.g. on, off, speed up, 5)" />
+
+        <EditText
+            android:id="@+id/devEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="device name"
+            android:inputType="text|textNoSuggestions" />
+
+        <EditText
+            android:id="@+id/btnEdit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="button name"
+            android:inputType="text|textNoSuggestions" />
+
+        <Button
+            android:id="@+id/learnBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Learn button (point remote at ESP8266 receiver)" />
+
+        <Button
+            android:id="@+id/testBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Test button" />
+
+        <Button
+            android:id="@+id/delBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Delete button (leave button empty to delete device)" />
+
+        <Button
+            android:id="@+id/listBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="List learned devices" />
+
         <Button
             android:id="@+id/connectBtn"
             android:layout_width="match_parent"

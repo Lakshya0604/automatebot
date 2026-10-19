@@ -40,6 +40,8 @@ class WakeWordService : Service(), RecognitionListener {
         const val EXTRA_WAKE = "wake"
         const val EXTRA_ESP32 = "esp32"
         const val EXTRA_GEMINI = "gemini"
+        const val EXTRA_DB = "db"
+        const val EXTRA_ROOM = "room"
         const val DEFAULT_WAKE = "bot one"
         private const val CHANNEL_ID = "listening"
         private const val COMMAND_WINDOW_MS = 8000L
@@ -60,6 +62,8 @@ class WakeWordService : Service(), RecognitionListener {
     private var esp32Host = ""
     private var wakePhrase = DEFAULT_WAKE
     private var geminiKey = ""
+    private var relay: RemoteRelay? = null
+    private lateinit var devices: DeviceStore
     private var cloud: SpeechRecognizer? = null
     private val wakeAliases = setOf("bot one", "bot won", "boat one", "bought one", "bot 1", "but one", "bott one")
 
@@ -78,6 +82,7 @@ class WakeWordService : Service(), RecognitionListener {
         super.onCreate()
         adb = AdbController(this)
         irRouter = IrRouter(this)
+        devices = DeviceStore(this)
         Logger.log(irRouter.describeBackend())
         createChannel()
         startForegroundCompat()
@@ -110,6 +115,10 @@ class WakeWordService : Service(), RecognitionListener {
                 wakePhrase = (intent.getStringExtra(EXTRA_WAKE) ?: wakePhrase)
                     .trim().lowercase().ifEmpty { DEFAULT_WAKE }
                 geminiKey = intent.getStringExtra(EXTRA_GEMINI) ?: geminiKey
+                relay?.stop()
+                relay = RemoteRelay(intent.getStringExtra(EXTRA_DB) ?: "", intent.getStringExtra(EXTRA_ROOM) ?: "") { text ->
+                    handler.post { handleRemoteText(text) }
+                }.also { it.start() }
             }
         }
         return START_STICKY
@@ -199,7 +208,7 @@ class WakeWordService : Service(), RecognitionListener {
         }
         Logger.log("Heard: \"${alts.first()}\"")
         for (a in alts) {
-            val p = CommandParser.parse(a)
+            val p = resolve(a)
             if (p != null) { execute(p); return }
         }
         if (geminiKey.isBlank()) { unknown(alts.first()); return }
@@ -208,6 +217,30 @@ class WakeWordService : Service(), RecognitionListener {
             val p = id?.let { CommandParser.fromIntent(it) }
             handler.post { if (p != null) execute(p) else unknown(alts.first()) }
         }
+    }
+
+    /** Learned IR devices first (user-named), then built-in commands. */
+    private fun resolve(text: String): CommandParser.Parsed? {
+        val m = devices.match(text)
+        if (m != null) return CommandParser.Parsed("${m.device}: ${m.buttons.joinToString(" ")}", CommandParser.Target.IrLearned(m.device, m.buttons))
+        return CommandParser.parse(text)
+    }
+
+    /** Command typed or spoken on the website. "intent:vol_up" = button press, else free text. */
+    private fun handleRemoteText(text: String) {
+        Logger.log("Web: \"$text\"")
+        val p = if (text.startsWith("intent:")) CommandParser.fromIntent(text.removePrefix("intent:")) else resolve(text)
+        if (p != null) { execute(p); relay?.reportStatus("OK: ${p.description}"); return }
+        if (geminiKey.isNotBlank()) {
+            executor.execute {
+                val id = GeminiIntent.resolve(geminiKey, text)
+                val q = id?.let { CommandParser.fromIntent(it) }
+                handler.post {
+                    if (q != null) { execute(q); relay?.reportStatus("OK: ${q.description}") }
+                    else relay?.reportStatus("Did not understand: $text")
+                }
+            }
+        } else relay?.reportStatus("Did not understand: $text")
     }
 
     private fun unknown(text: String) {
@@ -276,7 +309,7 @@ class WakeWordService : Service(), RecognitionListener {
     }
 
     private fun runCommand(text: String) {
-        val parsed = CommandParser.parse(text)
+        val parsed = resolve(text)
         if (parsed == null) { unknown(text); return }
         execute(parsed)
     }
@@ -287,6 +320,7 @@ class WakeWordService : Service(), RecognitionListener {
             val ok = when (val target = parsed.target) {
                 is CommandParser.Target.Adb -> adb.execute(host, port, target.shell)
                 is CommandParser.Target.Ir -> irRouter.send(esp32Host, target.name)
+                is CommandParser.Target.IrLearned -> irRouter.sendLearned(esp32Host, target.device, target.buttons)
             }
             handler.post {
                 tone.startTone(if (ok) ToneGenerator.TONE_PROP_ACK else ToneGenerator.TONE_PROP_NACK)
@@ -323,6 +357,7 @@ class WakeWordService : Service(), RecognitionListener {
 
     override fun onDestroy() {
         handler.removeCallbacks(commandTimeout)
+        relay?.stop()
         try { speech?.shutdown() } catch (_: Exception) {}
         try { cloud?.destroy() } catch (_: Exception) {}
         executor.shutdownNow()
